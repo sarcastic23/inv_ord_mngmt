@@ -1,7 +1,6 @@
 from sqlalchemy import select
-
-from storage import (
-    get_db,
+from .storage import get_db
+from .models import (
     ProductRow,
     InventoryRow,
     InventoryProductRow,
