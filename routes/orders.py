@@ -8,6 +8,7 @@ from order_utils.schemas import (
     OrderItemsAdd,
     OrderItemReject,
 )
+from order_utils.schemas import OrderResponse,OrderConfirmationResponse,OrderDeliveryResponse,OrderItemRejectResponse
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -36,7 +37,7 @@ def load_order(order_id: int) -> BusinessOrder:
         raise HTTPException(status_code=409, detail=str(error))
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201,response_model=OrderConfirmationResponse)
 def create_order(data: OrderCreate):
     try:
         inventory = Inventory(data.inventory_id)
@@ -70,7 +71,7 @@ def create_order(data: OrderCreate):
     return result
 
 
-@router.get("/{order_id}")
+@router.get("/{order_id}",response_model=OrderResponse)
 def get_order(order_id: int):
     order = load_order(order_id)
     result = order.view_order()
@@ -81,7 +82,7 @@ def get_order(order_id: int):
     return result
 
 
-@router.post("/{order_id}/items")
+@router.post("/{order_id}/items",response_model=OrderConfirmationResponse)
 def add_order_items(order_id: int, data: OrderItemsAdd):
     order = load_order(order_id)
 
@@ -96,7 +97,7 @@ def add_order_items(order_id: int, data: OrderItemsAdd):
         raise HTTPException(status_code=409, detail=str(error))
 
 
-@router.post("/{order_id}/items/{product_id}/reject")
+@router.post("/{order_id}/items/{product_id}/reject",response_model=OrderItemRejectResponse)
 def reject_order_item(
     order_id: int,
     product_id: str,
@@ -122,7 +123,7 @@ def reject_order_item(
     }
 
 
-@router.post("/{order_id}/deliver")
+@router.post("/{order_id}/deliver",response_model=OrderDeliveryResponse)
 def deliver_order(order_id: int):
     order = load_order(order_id)
 
