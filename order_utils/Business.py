@@ -1,5 +1,5 @@
-from sqlalchemy import select
-from .storage import get_db
+from sqlalchemy import select,update
+from .storage import get_db,get_db_write
 from .models import (
     ProductRow,
     InventoryRow,
@@ -7,7 +7,6 @@ from .models import (
     OrderRow,
     OrderItemRow,
 )
-
 
 
 
@@ -25,7 +24,6 @@ class Product:
         return f"Product({self.id,self.name,self.stock,self.unit_price})"
 
 
-
 class Inventory:
     def __init__(self,inventory_id):
              self.inventory_id = inventory_id
@@ -38,42 +36,42 @@ class Inventory:
 
 
     def add_products(self, products: list[Product]):
-        with get_db() as db:
-            with db.begin():
-                for product in products:
-                    if product.stock < 0 or product.unit_price < 0:
-                        raise ValueError("Stock and price cannot be negative")
+      with get_db_write() as db:
+            for product in products:
+                if product.stock < 0 or product.unit_price < 0:
+                    raise ValueError("Stock and price cannot be negative")
 
-                    product_row = db.get(ProductRow, product.id)
+                product_row = db.get(ProductRow, product.id)
 
-                    if product_row is None:
-                        db.add(
-                            ProductRow(id=product.id, name=product.name)
-                        )
-                    else:
-                        product_row.name = product.name
-
-                    db.flush()  #whats its use ,,session
-
-                    stock_row = db.get(
-                        InventoryProductRow,
-                        (self.inventory_id, product.id)
+                if product_row is None:
+                    db.add(
+                        ProductRow(id=product.id, name=product.name)
                     )
+                else:
+                    product_row.name = product.name
 
-                    if stock_row is None:
-                        db.add(
-                            InventoryProductRow(
-                                inventory_id=self.inventory_id,
-                                product_id=product.id,
-                                stock=product.stock,
-                                unit_price=product.unit_price
-                            )
+                db.flush()  #whats its use ,,session
+
+                stock_row = db.get(
+                    InventoryProductRow,
+                    (self.inventory_id, product.id)
+                )
+
+                if stock_row is None:
+                    db.add(
+                        InventoryProductRow(
+                            inventory_id=self.inventory_id,
+                            product_id=product.id,
+                            stock=product.stock,
+                            unit_price=product.unit_price
                         )
-                    else:
-                        stock_row.stock = product.stock
-                        stock_row.unit_price = product.unit_price
+                    )
+                else:
+                    stock_row.stock = product.stock
+                    stock_row.unit_price = product.unit_price
 
-        return len(products)
+      return len(products)
+
 
     def list_products(self):
         with get_db() as db:
@@ -96,21 +94,21 @@ class Inventory:
 
             return db.execute(statement).all()
 
+
     def add_existing_products(self, prd_id, qty):
         if qty <= 0:
             return False
 
-        with get_db() as db:
-            with db.begin():
-                product = db.get(
-                    InventoryProductRow,
-                    (self.inventory_id, prd_id)
-                )
+        with get_db_write() as db:
+            product = db.get(
+                InventoryProductRow,
+                (self.inventory_id, prd_id)
+            )
 
-                if product is None:
-                    return False
+            if product is None:
+                return False
 
-                product.stock += qty
+            product.stock += qty
 
         return qty
 
@@ -119,23 +117,21 @@ class Inventory:
         if qty <= 0:
             return False
 
-        with get_db() as db:
-            with db.begin():
-                product = db.get(
-                    InventoryProductRow,
-                    (self.inventory_id, prd_id)
-                )
+        with get_db_write() as db:
+            product = db.get(
+                InventoryProductRow,
+                (self.inventory_id, prd_id)
+            )
 
-                if product is None:
-                    return False
+            if product is None:
+                return False
 
-                if qty > product.stock:
-                    return False
+            if qty > product.stock:
+                return False
 
-                product.stock -= qty
+            product.stock -= qty
 
         return qty
-
 
 
     def __getitem__(self, prd_id):
@@ -165,6 +161,7 @@ class Inventory:
 
             return Product(*row)
 
+
     def __contains__(self, prd_id):
      with get_db() as db:
         return db.get(
@@ -192,8 +189,6 @@ class Inventory:
             raise ValueError("Key must match the product's ID")
 
         self.add_products([product])
-
-
 
 
 class orders:
@@ -234,6 +229,7 @@ class orders:
 
             return 1
 
+
     def process_orders(self, orders: list[tuple]):
         totals = []
         remaining_stock = {}
@@ -267,134 +263,149 @@ class orders:
         rejected = []
         order_id = self.order_id
 
-        with get_db() as db:
-            with db.begin():
-                order = None
+        with get_db_write() as db:
+            order = None
 
-                if order_id is not None:
-                    order = db.get(OrderRow, order_id)
-
-                    if order is None or order.status != "confirmed":
-                        raise ValueError("Order is no longer open")
-
-                for prd_id, qty in orders:
-                    stock_row = db.get(
-                        InventoryProductRow,
-                        (self.inventory.inventory_id, prd_id)
-                    )
-
-                    if stock_row is None:
-                        message = "Product not in this inventory"
-                    elif qty <= 0:
-                        message = "Quantity must be positive"
-                    elif qty > stock_row.stock:
-                        message = "Insufficient stock"
-                    else:
-                        message = None
-
-                    if message is not None:
-                        rejected.append({
-                            "product_id": prd_id,
-                            "qty": qty,
-                            "message": message
-                        })
-                        continue
-
-                    if order is None:
-                        order = OrderRow(
-                            customer_id=self.customer_id,
-                            inventory_id=self.inventory.inventory_id,
-                            status="confirmed"
-                        )
-                        db.add(order)
-                        db.flush()
-                        order_id = order.id
-
-                    item = db.get(OrderItemRow, (order_id, prd_id))
-
-                    if item is None:
-                        db.add(
-                            OrderItemRow(
-                                order_id=order_id,
-                                product_id=prd_id,
-                                quantity=qty,
-                                unit_price=stock_row.unit_price
-                            )
-                        )
-                    else:
-                        item.quantity += qty
-
-                    stock_row.stock -= qty
-
-        self.order_id = order_id
-
-        return {"order_id": order_id, "rejected": rejected}
-
-    
-    def reject_order(self, prd_id, qty):
-        if qty <= 0 or self.order_id is None:
-            return False
-
-        with get_db() as db:
-            with db.begin():
-                order = db.get(OrderRow, self.order_id)
+            if order_id is not None:
+                order = db.get(OrderRow, order_id)
 
                 if order is None or order.status != "confirmed":
-                    return False
+                    raise ValueError("Order is no longer open")
 
-                item = db.get(
-                    OrderItemRow,
-                    (self.order_id, prd_id)
+            for prd_id, qty in orders:
+                if qty <= 0:
+                    rejected.append({
+                        "product_id": prd_id,
+                        "qty": qty,
+                        "message": "Quantity must be positive"
+                    })
+                    continue
+
+                result = db.execute(
+                    update(InventoryProductRow)
+                    .where(
+                        InventoryProductRow.inventory_id
+                        == self.inventory.inventory_id,
+                        InventoryProductRow.product_id == prd_id,
+                        InventoryProductRow.stock >= qty
+                    )
+                    .values(stock=InventoryProductRow.stock - qty)
+                    .execution_options(synchronize_session=False)
                 )
-
-                if item is None:
-                    return False
 
                 stock_row = db.get(
                     InventoryProductRow,
                     (self.inventory.inventory_id, prd_id)
                 )
 
-                if stock_row is None:
-                    raise ValueError("Ordered product is missing from inventory")
+                if result.rowcount == 0:
+                    rejected.append({
+                        "product_id": prd_id,
+                        "qty": qty,
+                        "message": (
+                            "Product not in this inventory"
+                            if stock_row is None
+                            else "Insufficient stock"
+                        )
+                    })
+                    continue
 
-                actual_removed = min(qty, item.quantity)
-                stock_row.stock += actual_removed
+                if order is None:
+                    order = OrderRow(
+                        customer_id=self.customer_id,
+                        inventory_id=self.inventory.inventory_id,
+                        status="confirmed"
+                    )
+                    db.add(order)
+                    db.flush()
+                    order_id = order.id
 
-                if actual_removed == item.quantity:
-                    db.delete(item)
+                item = db.get(OrderItemRow, (order_id, prd_id))
+
+                if item is None:
+                    db.add(
+                        OrderItemRow(
+                            order_id=order_id,
+                            product_id=prd_id,
+                            quantity=qty,
+                            unit_price=stock_row.unit_price
+                        )
+                    )
                 else:
-                    item.quantity -= actual_removed
+                    item.quantity += qty
 
-                db.flush()
+        self.order_id = order_id
 
-                remaining_item = db.scalar(
-                    select(OrderItemRow.product_id)
-                    .where(OrderItemRow.order_id == self.order_id)
-                    .limit(1)
-                )
+        return {"order_id": order_id, "rejected": rejected}
 
-                if remaining_item is None:
-                    order.status = "cancelled"
+
+    def reject_order(self, prd_id, qty):
+        if qty <= 0 or self.order_id is None:
+            return False
+
+        with get_db_write() as db:
+            order = db.get(OrderRow, self.order_id)
+
+            if order is None or order.status != "confirmed":
+                return False
+
+            item = db.get(
+                OrderItemRow,
+                (self.order_id, prd_id)
+            )
+
+            if item is None:
+                return False
+
+            stock_row = db.get(
+                InventoryProductRow,
+                (self.inventory.inventory_id, prd_id)
+            )
+
+            if stock_row is None:
+                raise ValueError("Ordered product is missing from inventory")
+
+            actual_removed = min(qty, item.quantity)
+            stock_row.stock += actual_removed
+
+            if actual_removed == item.quantity:
+                db.delete(item)
+            else:
+                item.quantity -= actual_removed
+
+            db.flush()
+
+            remaining_item = db.scalar(
+                select(OrderItemRow.product_id)
+                .where(OrderItemRow.order_id == self.order_id)
+                .limit(1)
+            )
+
+            if remaining_item is None:
+                order.status = "cancelled"
 
         return actual_removed
           
-
 
     def deliver_order(self):
         if self.order_id is None:
             return False
 
-        with get_db() as db:
-            with db.begin():
-                order = db.get(OrderRow, self.order_id)
+        with get_db_write() as db:
+            result = db.execute(
+                update(OrderRow)
+                .where(
+                    OrderRow.id == self.order_id,
+                    OrderRow.status == "confirmed"
+                )
+                .values(status="delivered")
+                .execution_options(synchronize_session=False)
+            )
 
-                if order is None or order.status != "confirmed":
-                    return False
+            changed = result.rowcount == 1
 
-                order.status = "delivered"
+        return changed
 
-        return True
 
     def view_order(self):
         if self.order_id is None:
