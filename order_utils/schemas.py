@@ -30,7 +30,6 @@ class OrderItemInput(BaseModel):
 
 class OrderCreate(BaseModel):
     inventory_id: int
-    customer_id: int
     items: list[OrderItemInput] = Field(min_length=1)
 
 
@@ -81,3 +80,39 @@ class OrderItemRejectResponse(BaseModel):
 class OrderDeliveryResponse(BaseModel):
     order_id: int
     status: Literal["delivered"]
+
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=50, pattern=r"^\S+$")
+    password: str = Field(min_length=8, max_length=128)
+
+
+class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+
+
+
+class UserLogin(BaseModel):
+    username: str = Field(min_length=1, max_length=50)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+
+
+class OrderSummaryResponse(BaseModel):
+    order_id: int
+    inventory_id: int
+    status: Literal["confirmed", "cancelled", "delivered"]
+
+class OrderCancellationResponse(BaseModel):
+    order_id: int
+    status: Literal["cancelled"]
+
+    

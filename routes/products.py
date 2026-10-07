@@ -6,16 +6,32 @@ from order_utils.storage import get_db_dependency
 from order_utils.schemas import ProductCreate, ProductResponse,InventoryProductInput
 from sqlalchemy.exc import IntegrityError
 from order_utils.Business import Inventory, Product
+from .auth import get_current_user
+
+router = APIRouter( dependencies=[Depends(get_current_user)])
+
+public_router = APIRouter()
+
+@public_router.get("/inventories/{inventory_id}/products")
+def view_inventory(inventory_id: int):
+    try:
+        inventory = Inventory(inventory_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+
+    return [
+        {
+            "id": product.id,
+            "name": product.name,
+            "stock": product.stock,
+            "unit_price": product.unit_price
+        }
+        for product in inventory
+    ]
 
 
-router = APIRouter()
 
 
-
-
-
-
-router = APIRouter()
 
 
 @router.get("/products")

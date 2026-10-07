@@ -450,6 +450,37 @@ class orders:
                 "total": sum(qty * price for _, _, qty, price in items)
             }
 
+    def cancel_order(self):
+        if self.order_id is None:
+            return False
+
+        with get_db_write() as db:
+            order = db.get(OrderRow, self.order_id)
+
+            if order is None or order.status != "confirmed":
+                return False
+
+            items = db.scalars(
+                select(OrderItemRow)
+                .where(OrderItemRow.order_id == self.order_id)
+            ).all()
+
+            for item in items:
+                stock_row = db.get(
+                    InventoryProductRow,
+                    (order.inventory_id, item.product_id)
+                )
+
+                if stock_row is None:
+                    raise ValueError("Ordered product is missing from inventory")
+
+                stock_row.stock += item.quantity
+
+            # Keep the items as history; restore stock only once.
+            order.status = "cancelled"
+
+        return True
+
 
 
 
