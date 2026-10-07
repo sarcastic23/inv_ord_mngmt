@@ -36,7 +36,7 @@ class Inventory:
 
 
     def add_products(self, products: list[Product]):
-      with get_db_write() as db:
+        with get_db_write() as db:
             for product in products:
                 if product.stock < 0 or product.unit_price < 0:
                     raise ValueError("Stock and price cannot be negative")
@@ -47,10 +47,8 @@ class Inventory:
                     db.add(
                         ProductRow(id=product.id, name=product.name)
                     )
-                else:
-                    product_row.name = product.name
 
-                db.flush()  #whats its use ,,session
+                db.flush()
 
                 stock_row = db.get(
                     InventoryProductRow,
@@ -70,7 +68,7 @@ class Inventory:
                     stock_row.stock = product.stock
                     stock_row.unit_price = product.unit_price
 
-      return len(products)
+        return len(products)
 
 
     def list_products(self):

@@ -92,3 +92,64 @@ def test_seller_cannot_modify_another_inventory(client):
     response = client.get(f"{url}/owner-product")
     assert response.status_code == 200, response.text
     assert response.json() == original
+
+
+def test_seller_cannot_rename_shared_product(client):
+    inventory_id, headers = register_seller(client, "seller")
+
+    url = f"/inventories/{inventory_id}/products"
+
+    response = client.put(
+        url,
+        headers=headers,
+        json=[
+            {
+                "id": "test-product",
+                "name": "Changed name",
+                "stock": 5,
+                "unit_price": 70
+            }
+        ]
+    )
+    assert response.status_code == 200, response.text
+
+    response = client.get(f"{url}/test-product")
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "id": "test-product",
+        "name": "Test product",
+        "stock": 5,
+        "unit_price": 70
+    }
+
+    response = client.get("/inventories/1/products/test-product")
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "id": "test-product",
+        "name": "Test product",
+        "stock": 10,
+        "unit_price": 50
+    }
+
+    response = client.put(
+        url,
+        headers=headers,
+        json=[
+            {
+                "id": "test-product",
+                "name": "Another name",
+                "stock": 8,
+                "unit_price": 90
+            }
+        ]
+    )
+    assert response.status_code == 200, response.text
+
+    response = client.get(f"{url}/test-product")
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "id": "test-product",
+        "name": "Test product",
+        "stock": 8,
+        "unit_price": 90
+    }
