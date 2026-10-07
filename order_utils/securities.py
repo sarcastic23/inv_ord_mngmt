@@ -7,6 +7,11 @@ from dotenv import load_dotenv
 import os
 from pathlib import Path
 
+
+
+
+
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 SECRET_KEY = os.environ["SECRET_KEY"]
@@ -41,3 +46,6 @@ def create_access_token(user_id: int) -> str:
     }
 
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+

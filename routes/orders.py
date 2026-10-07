@@ -148,21 +148,6 @@ def reject_order_item(
     }
 
 
-@router.post("/{order_id}/deliver",response_model=OrderDeliveryResponse)
-def deliver_order(order_id: int):
-    order = load_order(order_id)
-
-    if not order.deliver_order():
-        raise HTTPException(
-            status_code=409,
-            detail="Only confirmed orders can be delivered"
-        )
-
-    return {
-        "order_id": order_id,
-        "status": "delivered"
-    }
-
 
 @router.get("", response_model=list[OrderSummaryResponse])
 def list_my_orders(
