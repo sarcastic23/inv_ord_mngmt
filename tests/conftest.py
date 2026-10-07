@@ -9,7 +9,8 @@ def test_runtime(tmp_path_factory):
     with pytest.MonkeyPatch.context() as patch:
         # Set these before importing the application.
         patch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
-        patch.setenv("JWT_SECRET_KEY", "test-only-secret-" + "a" * 64)
+        patch.setenv("SECRET_KEY", "test-only-secret-" + "a" * 64)
+        patch.setenv("ALGORITHM", "HS256")
 
         from order_utils import storage
 
