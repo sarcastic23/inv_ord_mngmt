@@ -115,4 +115,8 @@ class OrderCancellationResponse(BaseModel):
     order_id: int
     status: Literal["cancelled"]
 
-    
+class InventoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str

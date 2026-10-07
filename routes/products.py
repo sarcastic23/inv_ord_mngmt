@@ -7,6 +7,9 @@ from order_utils.schemas import ProductCreate, ProductResponse,InventoryProductI
 from sqlalchemy.exc import IntegrityError
 from order_utils.Business import Inventory, Product
 from .auth import get_current_user
+from order_utils.models import InventoryRow
+from order_utils.schemas import InventoryResponse
+
 
 router = APIRouter( dependencies=[Depends(get_current_user)])
 
@@ -28,6 +31,20 @@ def view_inventory(inventory_id: int):
         }
         for product in inventory
     ]
+
+
+@public_router.get(
+    "/inventories",
+    response_model=list[InventoryResponse]
+)
+def list_inventories(
+    db: Session = Depends(get_db_dependency)
+):
+    return db.scalars(
+        select(InventoryRow).order_by(InventoryRow.name)
+    ).all()
+
+
 
 
 

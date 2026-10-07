@@ -143,3 +143,23 @@ def test_cancellation_restores_stock_only_once(client):
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "cancelled"
     assert response.json()["items"][0]["quantity"] == 4
+
+
+def test_inventory_list_is_public(client):
+    response = client.get("/inventories")
+
+    assert response.status_code == 200, response.text
+    assert response.json() == [
+        {"id": 1, "name": "Test inventory"}
+    ]
+
+
+def test_login_rejects_wrong_password(client):
+    register_and_login(client, "alice")
+
+    response = client.post(
+        "/auth/login",
+        json={"username": "alice", "password": "wrong-password"}
+    )
+
+    assert response.status_code == 401, response.text
