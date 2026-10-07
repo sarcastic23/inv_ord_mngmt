@@ -89,6 +89,35 @@ class UserRow(Base):
 
 
 
+class InventorySellerRow(Base):
+    __tablename__ = "inventory_sellers"
 
-    
+    inventory_id: Mapped[int] = mapped_column(
+        ForeignKey("inventories.id"),
+        primary_key=True
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        unique=True
+    )
+
+
+
+
+class CustomerRow(Base):
+    __tablename__ = "customers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    inventory_id: Mapped[int] = mapped_column(
+        ForeignKey("inventories.id"),
+        index=True
+    )
+
+    name: Mapped[str]
+    phone: Mapped[str | None]
+    address: Mapped[str | None]
+
+
 Base.metadata.create_all(engine)

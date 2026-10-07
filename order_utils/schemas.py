@@ -120,3 +120,43 @@ class InventoryResponse(BaseModel):
 
     id: int
     name: str
+
+
+class SellerCreate(UserCreate):
+    inventory_name: str = Field(min_length=1, max_length=100)
+
+
+class SellerResponse(BaseModel):
+    id: int
+    username: str
+    inventory_id: int
+    inventory_name: str
+
+
+class CustomerCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=100)
+    phone: str | None = Field(default=None, min_length=1, max_length=30)
+    address: str | None = Field(default=None, min_length=1, max_length=300)
+
+
+class CustomerResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    inventory_id: int
+    name: str
+    phone: str | None
+    address: str | None
+
+
+class CustomerUpdate(BaseModel):
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        extra="forbid"
+    )
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    phone: str | None = Field(default=None, min_length=1, max_length=30)
+    address: str | None = Field(default=None, min_length=1, max_length=300)
