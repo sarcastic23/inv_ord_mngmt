@@ -3,6 +3,7 @@ from contextlib import contextmanager
 
 from sqlalchemy import  create_engine,event
 from sqlalchemy.orm import sessionmaker
+import os
 
 
 
@@ -10,8 +11,13 @@ from sqlalchemy.orm import sessionmaker
 
 
 db_path = Path(__file__).resolve().parent / "business.db"
-engine = create_engine(f"sqlite:///{db_path.as_posix()}", echo=False)
 
+database_url = os.environ.get(
+    "DATABASE_URL",
+    f"sqlite:///{db_path.as_posix()}"
+)
+
+engine = create_engine(database_url, echo=False)
 
 SessionLocal = sessionmaker(bind=engine)
 
