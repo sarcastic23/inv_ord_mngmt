@@ -53,12 +53,12 @@ class OrderItemResponse(BaseModel):
 
 class OrderResponse(BaseModel):
     order_id: int
-    customer_id: int
+    customer_id: int | None
+    directory_customer_id: int | None
     inventory_id: int
     status: Literal["confirmed", "cancelled", "delivered"]
     items: list[OrderItemResponse]
     total: int
-
 
 class RejectedOrderItem(BaseModel):
     product_id: str

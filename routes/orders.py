@@ -32,18 +32,17 @@ def load_order(order_id: int) -> BusinessOrder:
 
         inventory_id = row.inventory_id
         customer_id = row.customer_id
+        directory_customer_id = row.directory_customer_id
 
     try:
-        inventory = Inventory(inventory_id)
         return BusinessOrder(
-            inventory=inventory,
+            inventory=Inventory(inventory_id),
             customer_id=customer_id,
+            directory_customer_id=directory_customer_id,
             order_id=order_id
         )
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error))
-
-
 
 def load_customer_order(
     order_id: int,

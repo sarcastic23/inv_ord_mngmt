@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException,Depends
 from sqlalchemy import select
 
-from order_utils.models import  UserRow,InventoryRow,InventorySellerRow,CustomerRow
+from order_utils.models import  UserRow,InventoryRow,InventorySellerRow,CustomerRow,OrderRow
 
 from order_utils.schemas import (
     SellerCreate,
@@ -12,7 +12,12 @@ from order_utils.schemas import (
     OrderDeliveryResponse,
     CustomerResponse,
     CustomerCreate,
-    CustomerUpdate
+    CustomerUpdate,
+    OrderSummaryResponse,
+    OrderResponse,
+    OrderConfirmationResponse,
+    OrderItemsAdd
+    
 )
 from order_utils.securities import (
     hash_password,
@@ -20,14 +25,9 @@ from order_utils.securities import (
     create_access_token,
 )
 from order_utils.storage import get_db, get_db_write
-from fastapi import Depends
 from .auth import get_current_user
 
-from order_utils.models import OrderRow
-from order_utils.schemas import OrderSummaryResponse
 from order_utils.Business import Inventory, orders as BusinessOrder
-from order_utils.schemas import OrderResponse
-
 
 
 router = APIRouter(prefix="/seller", tags=["Seller"])
@@ -71,13 +71,17 @@ def load_seller_order(
             )
 
         customer_id = row.customer_id
+        directory_customer_id = row.directory_customer_id
 
-    return BusinessOrder(
-        inventory=Inventory(inventory_id),
-        customer_id=customer_id,
-        order_id=order_id
-    )
-
+    try:
+        return BusinessOrder(
+            inventory=Inventory(inventory_id),
+            customer_id=customer_id,
+            directory_customer_id=directory_customer_id,
+            order_id=order_id
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
 
 
 
@@ -107,7 +111,7 @@ def list_seller_orders(
 @router.get("/orders/{order_id}", response_model=OrderResponse)
 def view_seller_order(
     order: BusinessOrder = Depends(load_seller_order)
-):
+):   #we should just use route's order_id to pass it to load_seller_order,,but rn im bored ,, idnt hv energy to update these schemas ...
     result = order.view_order()
 
     if result is None:
@@ -251,6 +255,59 @@ def update_customer(
         response = CustomerResponse.model_validate(customer)
 
     return response
+
+
+
+# this creates  order for an offline customer for the seller .
+
+@router.post(
+    "/customers/{customer_id}/orders",
+    response_model=OrderConfirmationResponse,
+    status_code=201
+)
+def create_customer_order(
+    customer_id: int,
+    data: OrderItemsAdd,
+    inventory_id: int = Depends(get_seller_inventory)
+):
+    with get_db() as db:
+        customer = db.scalar(
+            select(CustomerRow).where(
+                CustomerRow.id == customer_id,
+                CustomerRow.inventory_id == inventory_id
+            )
+        )
+
+        if customer is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Customer not found"
+            )
+
+    items = [
+        (item.product_id, item.quantity)
+        for item in data.items
+    ]
+
+    try:
+        order = BusinessOrder(
+            inventory=Inventory(inventory_id),
+            directory_customer_id=customer_id
+        )
+        result = order.confirmed_order(items)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    if result["order_id"] is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "No items could be accepted",
+                "rejected": result["rejected"]
+            }
+        )
+
+    return result
 
 
 

@@ -1,6 +1,6 @@
 from sqlalchemy import CheckConstraint, ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from .storage import engine
+
 
 
 class Base(DeclarativeBase):
@@ -46,19 +46,35 @@ class OrderRow(Base):
     __tablename__ = "orders"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    customer_id: Mapped[int]
+
+    customer_id: Mapped[int | None]
+
+    directory_customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "customers.id",
+            name="fk_orders_directory_customer_id_customers"
+        ),
+        index=True
+    )
+
     inventory_id: Mapped[int] = mapped_column(
         ForeignKey("inventories.id")
     )
+
     status: Mapped[str] = mapped_column(default="confirmed")
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('confirmed', 'cancelled', 'delivered')"
+            "status IN ('confirmed', 'cancelled', 'delivered')",
+            name="ck_orders_status"
+        ),
+        CheckConstraint(
+            "(customer_id IS NOT NULL AND directory_customer_id IS NULL) "
+            "OR "
+            "(customer_id IS NULL AND directory_customer_id IS NOT NULL)",
+            name="ck_orders_customer_identity"
         ),
     )
-
-
 class OrderItemRow(Base):
     __tablename__ = "order_items"
 
@@ -105,7 +121,7 @@ class InventorySellerRow(Base):
 
 
 
-class CustomerRow(Base):
+class CustomerRow(Base):  
     __tablename__ = "customers"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -120,4 +136,3 @@ class CustomerRow(Base):
     address: Mapped[str | None]
 
 
-Base.metadata.create_all(engine)

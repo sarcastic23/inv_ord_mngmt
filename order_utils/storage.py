@@ -46,7 +46,7 @@ def get_db_write():
             yield db
 
 @event.listens_for(engine, "connect")
-def enable_foreign_keys(dbapi_connection, connection_record):
+def enable_foreign_keys(dbapi_connection, connection_record):   # Enable foreign-key checks for each new SQLite connection.  ie no not existing key is assigned as foreign key ..
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys = ON")
     cursor.close()

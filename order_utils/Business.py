@@ -6,6 +6,7 @@ from .models import (
     InventoryProductRow,
     OrderRow,
     OrderItemRow,
+    CustomerRow
 )
 
 
@@ -47,7 +48,6 @@ class Inventory:
                     db.add(
                         ProductRow(id=product.id, name=product.name)
                     )
-
                 db.flush()
 
                 stock_row = db.get(
@@ -190,9 +190,20 @@ class Inventory:
 
 
 class orders:
-    def __init__(self, inventory: Inventory, customer_id, order_id=None):
+    def __init__(
+        self,
+        inventory: Inventory,
+        customer_id=None,
+        order_id=None,
+        *,
+        directory_customer_id=None
+    ):
+        if (customer_id is None) == (directory_customer_id is None):
+            raise ValueError("Provide exactly one customer identity")
+
         self.inventory = inventory
         self.customer_id = customer_id
+        self.directory_customer_id = directory_customer_id
         self.order_id = order_id
 
         if order_id is not None:
@@ -205,9 +216,11 @@ class orders:
                 if (
                     order.inventory_id != inventory.inventory_id
                     or order.customer_id != customer_id
+                    or order.directory_customer_id != directory_customer_id
                 ):
-                    raise ValueError("Order belongs to another inventory or customer")
-
+                    raise ValueError(
+                        "Order belongs to another inventory or customer"
+                    )
 
     def verify_order(self, prd_id, qty):
         if qty <= 0:
@@ -262,6 +275,24 @@ class orders:
         order_id = self.order_id
 
         with get_db_write() as db:
+            if self.directory_customer_id is not None:
+                customer = db.get(CustomerRow, self.directory_customer_id)
+
+                if (
+                    customer is None
+                    or customer.inventory_id != self.inventory.inventory_id
+                ):
+                    raise ValueError("Customer not found in this inventory")
+
+            order = None
+
+
+
+
+
+
+
+
             order = None
 
             if order_id is not None:
@@ -288,7 +319,7 @@ class orders:
                         InventoryProductRow.stock >= qty
                     )
                     .values(stock=InventoryProductRow.stock - qty)
-                    .execution_options(synchronize_session=False)
+                    .execution_options(synchronize_session=False)   #jst to understand ,, its helps to retain data of var that fetched db row before any updates to the  db...
                 )
 
                 stock_row = db.get(
@@ -311,6 +342,7 @@ class orders:
                 if order is None:
                     order = OrderRow(
                         customer_id=self.customer_id,
+                        directory_customer_id=self.directory_customer_id,
                         inventory_id=self.inventory.inventory_id,
                         status="confirmed"
                     )
@@ -435,6 +467,8 @@ class orders:
                 "customer_id": order.customer_id,
                 "inventory_id": order.inventory_id,
                 "status": order.status,
+                "customer_id": order.customer_id,
+                "directory_customer_id": order.directory_customer_id,
                 "items": [
                     {
                         "product_id": prd_id,
