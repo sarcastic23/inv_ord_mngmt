@@ -54,6 +54,24 @@ def get_seller_inventory(
         return inventory_id
 
 
+@router.get("/me", response_model=SellerResponse)
+def get_seller_profile(user: UserResponse = Depends(get_current_user)):
+    with get_db() as db:
+        mapping = db.scalar(
+            select(InventorySellerRow)
+            .where(InventorySellerRow.user_id == user.id)
+        )
+        if mapping is None:
+            raise HTTPException(status_code=403, detail="Seller access required")
+        inventory = db.get(InventoryRow, mapping.inventory_id)
+        return SellerResponse(
+            id=user.id,
+            username=user.username,
+            inventory_id=inventory.id,
+            inventory_name=inventory.name,
+        )
+
+
 def load_seller_order(
     order_id: int,
     inventory_id: int = Depends(get_seller_inventory)

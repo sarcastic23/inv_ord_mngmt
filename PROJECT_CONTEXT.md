@@ -1,6 +1,6 @@
 # Project context for any AI assistant
 
-Last reviewed: 2026-10-08. This is a snapshot of the actual workspace, including uncommitted changes. Update it after meaningful changes; inspect current source before making edits.
+Last reviewed: 2026-10-24. This is a snapshot of the actual workspace, including uncommitted changes. Update it after meaningful changes; inspect current source before making edits.
 
 ## Keeping this file with the project
 
@@ -25,6 +25,7 @@ Reusable prompt after feature work:
 
 | Date | Change | Verification |
 | --- | --- | --- |
+| 2026-10-24 | Added the first separate Next.js distributor frontend in `frontend/` with sign-in, overview, inventory, customers, and order workflows; increased type sizes for readability. Added `GET /seller/me` for account bootstrap and configurable FastAPI CORS origins. | `npm run lint` and `npm run build` passed on Next.js 16.4.3; dependency install reported 0 vulnerabilities. API smoke flow passed for registration/login, inventory write/read, customer create/list, order create/detail/delivery, frontend HTTP 200, and persisted customer/order/stock after API restart using `order_utils/frontend-smoke.db`. Full backend pytest suite not run. |
 | 2026-10-08 | Fixed SQLite migration table rebuilds with existing order items: foreign-key enforcement is temporarily disabled on the migration connection, integrity is checked before/after, and explicit transactions allow rollback. Downgrade now recreates removed cart tables. Added real migration regression tests. | 31 passed, 1 warning, using a temporary test database. |
 | 2026-10-08 | Refreshed the handoff: distributor customer create/list/view/update is implemented; inventory writes enforce seller ownership; shared product names are preserved; customer records remain separate from order/login identities. | Current backend suite: 27 passed, 1 warning. |
 | 2026-10-07 | Created the project handoff from the current source and added the ongoing update workflow. | Existing backend suite: 12 passed, 1 warning before these documentation-only updates. |
@@ -37,11 +38,11 @@ Help me continue from the current implementation. Explain changes clearly and di
 
 ## Where we are now
 
-The project is a Python backend with a working FastAPI inventory and order foundation. There is no frontend in the reviewed files. Customer registration/login, public inventory browsing, customer orders, seller registration/login, seller order viewing, and seller delivery are implemented.
+The project contains a FastAPI backend and a separate Next.js distributor frontend in `frontend/`. The frontend has sign-in, overview, inventory, customer, and order screens connected to existing seller APIs. Customer registration/login, public inventory browsing, customer orders, seller registration/login, seller order viewing, and seller delivery are implemented.
 
 We are at the first distributor customer-management stage: sellers can create, list, view, and update customer records belonging to their inventory. Records include a required name and optional phone/address; customers do not need login accounts for these records. Inventory product updates are restricted to the inventory's seller.
 
-The directory-to-order schema work has started: models and migration `46577a49b999` add nullable `directory_customer_id` referencing `customers`, make `customer_id` nullable, and require exactly one customer identity. Customer-facing routes still use the authenticated user's ID as `customer_id`. There is no seller endpoint for creating an order for a directory customer, customer order history endpoint, customer deletion, balances, or payments. The schema foundation is present; the distributor order workflow still needs implementation. Migration verification used temporary databases and does not establish the current revision of the real business database.
+The directory-to-order workflow is implemented: models and migration `46577a49b999` add nullable `directory_customer_id` referencing `customers`, make `customer_id` nullable, and require exactly one customer identity. Sellers can create an order for a customer directory record using `POST /seller/customers/{customer_id}/orders`, then list/view and deliver it. Customer-facing routes still use the authenticated user's ID as `customer_id`. Customer order history for directory customers, customer deletion, balances, and payments are not implemented. Migration verification used temporary databases and does not establish the current revision of the real business database.
 
 The seller delivery endpoint and its permission/stock test are present. Customers cannot mark orders delivered. The existing test suite passes, but its coverage does not establish that every business rule or security boundary is complete.
 
@@ -52,7 +53,7 @@ The seller delivery endpoint and its permission/stock test are present. Customer
 - `python-dotenv` loads the root `.env` in `order_utils/securities.py`.
 - Application entry point: `main.py`, with FastAPI instance `app`.
 - Local environment: `.venv`; tests use pytest and FastAPI TestClient.
-- Alembic migrations are now present in `migrations/`, configured by `alembic.ini`. No dependency manifest, deployment configuration, or frontend was found in the reviewed project files.
+- Alembic migrations are present in `migrations/`, configured by `alembic.ini`. The Next.js dependency manifest and lockfile are in `frontend/`; backend dependency manifest and deployment configuration are not present.
 
 From the project root on Windows:
 
@@ -74,11 +75,12 @@ Do not include the real `.env`, credentials, tokens, or customer/database conten
 
 | File | Responsibility |
 | --- | --- |
-| `main.py` | Builds the app and includes public products, protected products, orders, auth, and seller routers. |
+| `main.py` | Builds the app, configures CORS from `FRONTEND_ORIGINS` (defaults to `http://localhost:3000`), and includes public products, protected products, orders, auth, and seller routers. |
 | `routes/auth.py` | Customer/user registration, login, and `get_current_user` bearer-token validation. |
 | `routes/products.py` | Public inventory browsing, authenticated shared catalog reads, seller-owned inventory product upserts. |
 | `routes/orders.py` | Customer-owned order creation, listing, details, item additions/removals, cancellation. |
-| `routes/seller.py` | Seller registration/login, inventory membership checks, seller order listing/details/delivery, inventory-scoped customer creation/listing/details/updates. |
+| `routes/seller.py` | Seller registration/login/profile (`GET /seller/me`), inventory membership checks, seller order listing/details/delivery, inventory-scoped customer CRUD (create/list/view/update), and offline customer order creation. |
+| `frontend/` | Next.js 16 distributor app: login, dashboard, inventory updates, customer directory/create, order creation/listing/delivery. Setup notes are in `frontend/README.md`. |
 | `order_utils/Business.py` | `Product`, `Inventory`, and lowercase `orders` business class; stock and order transactions. Routes alias `orders` as `BusinessOrder`. |
 | `order_utils/models.py` | SQLAlchemy tables and constraints; import-time table creation has been removed. |
 | `migrations/env.py` | Uses the application engine and metadata; SQLite migration transactions, temporary foreign-key enforcement changes, and integrity checks. |
@@ -91,6 +93,7 @@ Do not include the real `.env`, credentials, tokens, or customer/database conten
 | `tests/test_fileislong.py` | Main customer/inventory/auth/seller API regression tests. |
 | `tests/test_seller_customers.py` | Seller delivery permissions/status/stock plus customer management, isolation, authentication, and validation tests. |
 | `tests/test_inventory_permissions.py` | Inventory ownership enforcement and protection against renaming shared products through inventory upserts. |
+| `tests/test_offline_orders.py` | Distributor order creation for saved customers, order access isolation, stock deduction, delivery, and rejection behavior. |
 | `pytest.ini` | Limits test discovery to `tests`. |
 | `tests/test_migrations.py` | Real Alembic subprocess tests: existing order/item preservation, customer identity constraints, downgrade/re-upgrade, offline-order downgrade refusal, and broken-reference rejection. |
 | `tests/__init__.py` | Empty package marker, needed for relative helper imports. |
@@ -104,7 +107,7 @@ Do not include the real `.env`, credentials, tokens, or customer/database conten
 - `inventory_products`: composite key `(inventory_id, product_id)`, integer `stock` and `unit_price`, both nonnegative.
 - `users`: integer `id`, unique `username`, `password_hash`. There is no explicit role column.
 - `inventory_sellers`: inventory primary key and unique `user_id`, both foreign keys. Currently this permits one seller per inventory and one inventory per seller; it is not a multi-staff permission model.
-- `customers`: integer `id`, indexed inventory foreign key, required `name`, nullable `phone` and `address`. These are inventory-owned contact records, separate from login users; the new order schema can reference them through `directory_customer_id`, but routes do not yet create such orders.
+- `customers`: integer `id`, indexed inventory foreign key, required `name`, nullable `phone` and `address`. These are inventory-owned contact records, separate from login users; distributor orders reference them through `directory_customer_id`.
 - `orders`: integer `id`, nullable `customer_id` (login user ID, no users foreign key), nullable indexed `directory_customer_id` (customers foreign key), inventory foreign key, and status restricted to `confirmed`, `cancelled`, or `delivered`. A check requires exactly one of the two customer IDs to be set.
 - `order_items`: composite key `(order_id, product_id)`, positive integer `quantity`, nonnegative integer `unit_price`; order and product foreign keys.
 
@@ -116,6 +119,7 @@ Prices and totals are integers. Currency and whether those integers represent ma
 | --- | --- | --- |
 | Public | `POST /auth/register`, `POST /auth/login` | Register a user, obtain bearer token. |
 | Public | `POST /seller/register`, `POST /seller/login` | Register user + inventory + seller mapping; seller login requires mapping. |
+| Inventory seller | `GET /seller/me` | Return authenticated seller and associated inventory details for frontend bootstrap. |
 | Public | `GET /inventories` | List inventories. |
 | Public | `GET /inventories/{inventory_id}/products` | Inventory products including stock and price. |
 | Public | `GET /inventories/{inventory_id}/products/{product_id}` | One inventory product. |
@@ -128,10 +132,13 @@ Prices and totals are integers. Currency and whether those integers represent ma
 | Order customer | `POST /orders/{order_id}/cancel` | Cancel a confirmed order and restore stock. |
 | Inventory seller | `GET /seller/orders`, `GET /seller/orders/{order_id}` | List/view orders for seller's inventory. |
 | Inventory seller | `POST /seller/orders/{order_id}/deliver` | Mark a confirmed order delivered. |
+| Inventory seller | `POST /seller/customers/{customer_id}/orders` | Create an inventory order for a customer-directory record; stock is deducted and rejected items are reported. |
 | Inventory seller | `POST /seller/customers` | Create a customer in the seller's inventory; returns 201. |
 | Inventory seller | `GET /seller/customers` | List own customer records, sorted by name then ID. |
 | Inventory seller | `GET /seller/customers/{customer_id}` | View own customer; missing or another seller's customer returns 404. |
 | Inventory seller | `PATCH /seller/customers/{customer_id}` | Update supplied contact fields only; missing or another seller's customer returns 404. |
+
+FastAPI CORS permits `http://localhost:3000` by default. Set backend `FRONTEND_ORIGINS` to comma-separated allowed web origins in other environments.
 
 There is no `POST /orders/{order_id}/deliver` customer endpoint. Seller accounts are ordinary users with an inventory mapping; customer-facing authenticated routes do not explicitly exclude sellers.
 
@@ -168,7 +175,7 @@ Reviewed test command: `.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovi
 
 Result on 2026-10-08 after the migration fix: **31 passed, 1 warning**. The warning is a Starlette deprecation warning about TestClient's use of `httpx`. Four tests exercise actual migrations; API fixtures still create their schema with `create_all`.
 
-Tests cover invalid/missing order tokens, customer order isolation, cancellation stock restoration, public inventory browsing, wrong-password rejection, adding/removing quantities, seller registration/login, seller order isolation, seller delivery permissions/status/stock, inventory mutation permissions, shared product name preservation, and seller customer creation/listing/details/updates with ownership and validation checks.
+The recorded 2026-10-08 suite covered invalid/missing order tokens, customer order isolation, cancellation stock restoration, public inventory browsing, wrong-password rejection, adding/removing quantities, seller registration/login, seller order isolation, seller delivery permissions/status/stock, inventory mutation permissions, shared product name preservation, seller customer create/list/view/update, and offline customer order behaviors. Frontend lint/build passed on 2026-10-24; the backend suite was not run for the frontend change.
 
 The current run succeeded in the sandbox using an explicit workspace temporary directory and disabling the pytest cache. The previous review encountered temporary-directory permissions; this run did not require escalation.
 
@@ -178,19 +185,18 @@ The previous test configuration mismatch is resolved: `tests/conftest.py` now se
 
 These are observations and recommendations, not already approved feature requirements:
 
-1. Decide how distributor-owned customer records should connect to orders. Current order customer IDs identify login users; do not substitute directory customer IDs without explicitly resolving this distinction.
-2. Decide whether distributors should create orders for customers without customer login and what customer history/search workflows are needed. Basic inventory-owned contact profiles and management endpoints already exist.
-3. Define the basic distributor workflow before adding features: order approval needs, delivery details, customer search/history, and whether balances/credit/payment tracking are needed.
-4. Extend regression coverage alongside any new customer-to-order workflow. Test environment variable names and inventory mutation permission coverage are already corrected/implemented.
-5. Add a reproducible dependency manifest. Alembic migrations now exist; verify the actual database's revision/schema before applying them. The baseline creates tables for an empty database; adopting a pre-existing schema requires checking that it matches before stamping the baseline. SQLite batch migrations require a live connection; generating the full upgrade with `--sql` is not implemented.
-6. Define money units and currency. Consider timestamps and customer referential integrity when evolving models.
-7. Build the distributor interface and keep customer browsing/order features simple after the backend workflow is agreed.
+1. Improve order summaries so the frontend can display customer names and amounts without fetching every order detail separately; add directory-customer order history when that workflow is defined.
+2. Define delivery details and whether balances/credit/payment tracking are needed before adding those workflows.
+3. Add regression coverage for the new `/seller/me` profile endpoint and CORS configuration, plus continue testing customer-to-order behavior as it evolves.
+4. Add a reproducible backend dependency manifest. Verify the actual database's revision/schema before applying migrations. The baseline creates tables for an empty database; adopting a pre-existing schema requires checking that it matches before stamping the baseline. SQLite batch migrations require a live connection; generating the full upgrade with `--sql` is not implemented.
+5. Define money units and currency. The frontend currently labels values as integer `units` because the backend has not defined currency/scale.
+6. Consider timestamps, customer search/pagination, customer referential integrity, and role/staff access as product needs become clear.
 
 Other absent capabilities include structured delivery addresses, invoices, payment processing, returns, reports, pagination/search, delivery scheduling, and staff roles. Customer records already have a free-text address field. Do not assume all absent capabilities are required just because they are listed here.
 
 ## Working-state notes for the next AI
 
-The workspace has existing uncommitted edits. On 2026-10-08, tracked changes were in `main.py`, `order_utils/Business.py`, `order_utils/models.py`, `order_utils/securities.py`, `order_utils/storage.py`, and `routes/seller.py`; `PROJECT_CONTEXT.md` was untracked. Latest commit: `5856b69` (`miscellenous commits`), following `c6758bd` (`Added distributor customer management`). Seller routes are present in source and included by the current `main.py`. Preserve the owner's work; this handoff is based on files on disk, not only committed code.
+The workspace contains uncommitted backend and frontend work. Inspect `git status` before making further changes and preserve the owner's work; this handoff is based on files on disk, not only committed code. Seller routes are included by the current `main.py`.
 
 Read the relevant route, schema, model, and business method together before changing a workflow. Preserve stock restoration, delivery behavior, and access checks. Run tests against a temporary test database, never reset the real business database. Keep this context updated with implemented changes, actual test outcomes, and decisions the owner confirms.
 
