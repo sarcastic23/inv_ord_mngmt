@@ -15,9 +15,10 @@ The backend allows the local frontend origin by default. For another web origin,
 
 - Sign in using the seller login endpoint; the bearer token is kept in browser local storage.
 - Overview with stock counts, customer count, open orders, inventory preview, and recent orders.
-- Inventory listing and add/update form.
+- Inventory listing with all, running-low (1-9 units), and finished (0 units) filters, plus add/update form.
 - Customer directory and customer creation.
-- Customer order creation, order details, and delivery status updates.
+- Orders grouped by customer; confirmed history is unpaged, while delivered and cancelled history uses five orders per page, newest first.
+- Customer order creation, delivery status updates, and per-line price edits on a specific order.
 
 The backend stores prices as integers but has no configured currency or major/minor unit. The UI labels displayed amounts as integer `units` so it does not assume a currency scale.
 

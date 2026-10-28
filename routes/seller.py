@@ -1,7 +1,17 @@
-from fastapi import APIRouter, HTTPException,Depends
-from sqlalchemy import select
+from typing import Literal
 
-from order_utils.models import  UserRow,InventoryRow,InventorySellerRow,CustomerRow,OrderRow
+from fastapi import APIRouter, HTTPException, Depends, Query
+from sqlalchemy import case, func, select
+
+from order_utils.models import (
+    UserRow,
+    InventoryRow,
+    InventorySellerRow,
+    CustomerRow,
+    OrderRow,
+    OrderItemRow,
+    ProductRow,
+)
 
 from order_utils.schemas import (
     SellerCreate,
@@ -16,7 +26,10 @@ from order_utils.schemas import (
     OrderSummaryResponse,
     OrderResponse,
     OrderConfirmationResponse,
-    OrderItemsAdd
+    OrderItemsAdd,
+    OrderItemPriceUpdate,
+    CustomerOrderGroupResponse,
+    CustomerOrderHistoryResponse
     
 )
 from order_utils.securities import (
@@ -102,6 +115,50 @@ def load_seller_order(
         raise HTTPException(status_code=409, detail=str(error))
 
 
+def serialize_seller_orders(rows: list[OrderRow]) -> list[dict]:
+    if not rows:
+        return []
+
+    order_ids = [row.id for row in rows]
+    with get_db() as db:
+        items = db.execute(
+            select(
+                OrderItemRow.order_id,
+                OrderItemRow.product_id,
+                ProductRow.name,
+                OrderItemRow.quantity,
+                OrderItemRow.unit_price,
+            )
+            .join(ProductRow, ProductRow.id == OrderItemRow.product_id)
+            .where(OrderItemRow.order_id.in_(order_ids))
+            .order_by(OrderItemRow.order_id, ProductRow.name)
+        ).all()
+
+    items_by_order: dict[int, list[dict]] = {}
+    for order_id, product_id, name, quantity, unit_price in items:
+        subtotal = quantity * unit_price
+        items_by_order.setdefault(order_id, []).append({
+            "product_id": product_id,
+            "name": name,
+            "quantity": quantity,
+            "unit_price": unit_price,
+            "subtotal": subtotal,
+        })
+
+    return [
+        {
+            "order_id": row.id,
+            "customer_id": row.customer_id,
+            "directory_customer_id": row.directory_customer_id,
+            "inventory_id": row.inventory_id,
+            "status": row.status,
+            "items": items_by_order.get(row.id, []),
+            "total": sum(item["subtotal"] for item in items_by_order.get(row.id, [])),
+        }
+        for row in rows
+    ]
+
+
 
 
 @router.get("/orders", response_model=list[OrderSummaryResponse])
@@ -124,6 +181,172 @@ def list_seller_orders(
             for row in rows
         ]
 
+
+
+@router.get("/orders/recent", response_model=list[OrderResponse])
+def list_recent_seller_orders(
+    inventory_id: int = Depends(get_seller_inventory)
+):
+    with get_db() as db:
+        rows = db.scalars(
+            select(OrderRow)
+            .where(OrderRow.inventory_id == inventory_id)
+            .order_by(OrderRow.id.desc())
+            .limit(5)
+        ).all()
+
+    return serialize_seller_orders(rows)
+
+
+@router.get("/order-customers", response_model=list[CustomerOrderGroupResponse])
+def list_seller_order_customers(
+    inventory_id: int = Depends(get_seller_inventory)
+):
+    confirmed_count = func.sum(
+        case((OrderRow.status == "confirmed", 1), else_=0)
+    )
+    delivered_count = func.sum(
+        case((OrderRow.status == "delivered", 1), else_=0)
+    )
+    cancelled_count = func.sum(
+        case((OrderRow.status == "cancelled", 1), else_=0)
+    )
+
+    with get_db() as db:
+        directory_rows = db.execute(
+            select(
+                CustomerRow.id,
+                CustomerRow.name,
+                CustomerRow.phone,
+                CustomerRow.address,
+                func.count(OrderRow.id),
+                confirmed_count,
+                delivered_count,
+                cancelled_count,
+                func.max(OrderRow.id),
+            )
+            .join(
+                OrderRow,
+                OrderRow.directory_customer_id == CustomerRow.id,
+            )
+            .where(
+                CustomerRow.inventory_id == inventory_id,
+                OrderRow.inventory_id == inventory_id,
+            )
+            .group_by(
+                CustomerRow.id,
+                CustomerRow.name,
+                CustomerRow.phone,
+                CustomerRow.address,
+            )
+        ).all()
+
+        account_rows = db.execute(
+            select(
+                UserRow.id,
+                UserRow.username,
+                func.count(OrderRow.id),
+                confirmed_count,
+                delivered_count,
+                cancelled_count,
+                func.max(OrderRow.id),
+            )
+            .join(OrderRow, OrderRow.customer_id == UserRow.id)
+            .where(OrderRow.inventory_id == inventory_id)
+            .group_by(UserRow.id, UserRow.username)
+        ).all()
+
+    groups = [
+        CustomerOrderGroupResponse(
+            customer_type="directory",
+            customer_id=row[0],
+            customer_name=row[1],
+            phone=row[2],
+            address=row[3],
+            total_orders=row[4],
+            confirmed_orders=row[5] or 0,
+            delivered_orders=row[6] or 0,
+            cancelled_orders=row[7] or 0,
+            latest_order_id=row[8],
+        )
+        for row in directory_rows
+    ]
+    groups.extend(
+        CustomerOrderGroupResponse(
+            customer_type="account",
+            customer_id=row[0],
+            customer_name=row[1],
+            total_orders=row[2],
+            confirmed_orders=row[3] or 0,
+            delivered_orders=row[4] or 0,
+            cancelled_orders=row[5] or 0,
+            latest_order_id=row[6],
+        )
+        for row in account_rows
+    )
+    return sorted(groups, key=lambda group: group.latest_order_id, reverse=True)
+
+
+@router.get(
+    "/order-customers/{customer_type}/{customer_id}/orders",
+    response_model=CustomerOrderHistoryResponse,
+)
+def list_customer_order_history(
+    customer_type: Literal["directory", "account"],
+    customer_id: int,
+    status: Literal["confirmed", "delivered", "cancelled"] = "confirmed",
+    page: int = Query(default=1, ge=1),
+    inventory_id: int = Depends(get_seller_inventory),
+):
+    groups = list_seller_order_customers(inventory_id)
+    customer = next(
+        (
+            group for group in groups
+            if group.customer_type == customer_type
+            and group.customer_id == customer_id
+        ),
+        None,
+    )
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    customer_column = (
+        OrderRow.directory_customer_id
+        if customer_type == "directory"
+        else OrderRow.customer_id
+    )
+    filters = (
+        OrderRow.inventory_id == inventory_id,
+        customer_column == customer_id,
+        OrderRow.status == status,
+    )
+    with get_db() as db:
+        total = db.scalar(
+            select(func.count(OrderRow.id)).where(*filters)
+        ) or 0
+        query = (
+            select(OrderRow)
+            .where(*filters)
+            .order_by(OrderRow.id.desc())
+        )
+        if status == "confirmed":
+            page_size = max(total, 1)
+        else:
+            page_size = 5
+            query = query.offset((page - 1) * page_size).limit(page_size)
+        rows = db.scalars(query).all()
+
+    order_details = serialize_seller_orders(rows)
+
+    return CustomerOrderHistoryResponse(
+        customer=customer,
+        status=status,
+        page=page if status != "confirmed" else 1,
+        page_size=page_size,
+        total=total,
+        page_count=max(1, (total + page_size - 1) // page_size),
+        orders=order_details,
+    )
 
 
 @router.get("/orders/{order_id}", response_model=OrderResponse)
@@ -155,6 +378,25 @@ def deliver_seller_order(
         "order_id": order.order_id,
         "status": "delivered"
     }
+
+
+@router.patch(
+    "/orders/{order_id}/items/{product_id}/price",
+    response_model=OrderResponse,
+)
+def update_seller_order_item_price(
+    product_id: str,
+    data: OrderItemPriceUpdate,
+    order: BusinessOrder = Depends(load_seller_order),
+):
+    try:
+        order.update_item_price(product_id, data.unit_price)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    return order.view_order()
 
 
 

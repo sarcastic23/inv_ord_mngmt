@@ -1,6 +1,6 @@
 # Project context for any AI assistant
 
-Last reviewed: 2026-10-24. This is a snapshot of the actual workspace, including uncommitted changes. Update it after meaningful changes; inspect current source before making edits.
+Last reviewed: 2026-10-28. This is a snapshot of the actual workspace, including uncommitted changes. Update it after meaningful changes; inspect current source before making edits.
 
 ## Keeping this file with the project
 
@@ -25,6 +25,9 @@ Reusable prompt after feature work:
 
 | Date | Change | Verification |
 | --- | --- | --- |
+| 2026-10-28 | Added inventory filters for low/finished stock, customer-grouped order histories, newest-first order display, five-order pages for delivered/cancelled histories, unpaged confirmed orders, and per-order line-item repricing. | Frontend `npm run lint` and `npm run build` passed; backend files passed `py_compile` and FastAPI OpenAPI generation. Backend pytest and endpoint smoke checks were not run for this change. |
+| 2026-10-28 | Added a persistent light/dark theme toggle to the login and distributor workspace screens. Dark styles cover navigation, cards, forms, tables, alerts, and status labels. | `npm run lint` and `npm run build` passed. |
+| 2026-10-28 | Fixed async frontend forms resetting `event.currentTarget` after awaiting API calls; handlers now retain the form element. Applied to inventory, customer, and order forms. | `npm run lint` and `npm run build` passed. Read-only check confirmed the product from the reported inventory submission was already stored in `business.db`; the error was raised during UI reset after the successful API response. |
 | 2026-10-24 | Added the first separate Next.js distributor frontend in `frontend/` with sign-in, overview, inventory, customers, and order workflows; increased type sizes for readability. Added `GET /seller/me` for account bootstrap and configurable FastAPI CORS origins. | `npm run lint` and `npm run build` passed on Next.js 16.4.3; dependency install reported 0 vulnerabilities. API smoke flow passed for registration/login, inventory write/read, customer create/list, order create/detail/delivery, frontend HTTP 200, and persisted customer/order/stock after API restart using `order_utils/frontend-smoke.db`. Full backend pytest suite not run. |
 | 2026-10-08 | Fixed SQLite migration table rebuilds with existing order items: foreign-key enforcement is temporarily disabled on the migration connection, integrity is checked before/after, and explicit transactions allow rollback. Downgrade now recreates removed cart tables. Added real migration regression tests. | 31 passed, 1 warning, using a temporary test database. |
 | 2026-10-08 | Refreshed the handoff: distributor customer create/list/view/update is implemented; inventory writes enforce seller ownership; shared product names are preserved; customer records remain separate from order/login identities. | Current backend suite: 27 passed, 1 warning. |
@@ -38,7 +41,7 @@ Help me continue from the current implementation. Explain changes clearly and di
 
 ## Where we are now
 
-The project contains a FastAPI backend and a separate Next.js distributor frontend in `frontend/`. The frontend has sign-in, overview, inventory, customer, and order screens connected to existing seller APIs. Customer registration/login, public inventory browsing, customer orders, seller registration/login, seller order viewing, and seller delivery are implemented.
+The project contains a FastAPI backend and a separate Next.js distributor frontend in `frontend/`. The frontend has sign-in, overview, inventory, customer, and order screens. Inventory filters show all products, running-low stock (1-9 units), or finished stock (0 units). Orders are grouped by saved distributor customers or login accounts; confirmed histories are unpaged, while delivered and cancelled histories use five-order pages, all newest first by descending order ID. Sellers can change an item's price on a specific order without changing the inventory catalog price.
 
 We are at the first distributor customer-management stage: sellers can create, list, view, and update customer records belonging to their inventory. Records include a required name and optional phone/address; customers do not need login accounts for these records. Inventory product updates are restricted to the inventory's seller.
 
@@ -79,9 +82,9 @@ Do not include the real `.env`, credentials, tokens, or customer/database conten
 | `routes/auth.py` | Customer/user registration, login, and `get_current_user` bearer-token validation. |
 | `routes/products.py` | Public inventory browsing, authenticated shared catalog reads, seller-owned inventory product upserts. |
 | `routes/orders.py` | Customer-owned order creation, listing, details, item additions/removals, cancellation. |
-| `routes/seller.py` | Seller registration/login/profile (`GET /seller/me`), inventory membership checks, seller order listing/details/delivery, inventory-scoped customer CRUD (create/list/view/update), and offline customer order creation. |
-| `frontend/` | Next.js 16 distributor app: login, dashboard, inventory updates, customer directory/create, order creation/listing/delivery. Setup notes are in `frontend/README.md`. |
-| `order_utils/Business.py` | `Product`, `Inventory`, and lowercase `orders` business class; stock and order transactions. Routes alias `orders` as `BusinessOrder`. |
+| `routes/seller.py` | Seller registration/login/profile (`GET /seller/me`), inventory membership checks, customer-grouped order summaries/history pages/recent orders, seller order viewing/delivery/repricing, inventory-scoped customer CRUD, and offline customer order creation. |
+| `frontend/` | Next.js 16 distributor app: login, dashboard, inventory stock filters/updates, customer directory, grouped order histories, pagination, order delivery/repricing. Setup notes are in `frontend/README.md`. |
+| `order_utils/Business.py` | `Product`, `Inventory`, and lowercase `orders` business class; stock/order transactions and order line repricing. Routes alias `orders` as `BusinessOrder`. |
 | `order_utils/models.py` | SQLAlchemy tables and constraints; import-time table creation has been removed. |
 | `migrations/env.py` | Uses the application engine and metadata; SQLite migration transactions, temporary foreign-key enforcement changes, and integrity checks. |
 | `migrations/versions/` | Baseline schema and offline-customer order schema migration; the latter removes legacy cart tables. |
@@ -131,7 +134,11 @@ Prices and totals are integers. Currency and whether those integers represent ma
 | Order customer | `POST /orders/{order_id}/items/{product_id}/reject` | Remove requested quantity, up to quantity in the order. |
 | Order customer | `POST /orders/{order_id}/cancel` | Cancel a confirmed order and restore stock. |
 | Inventory seller | `GET /seller/orders`, `GET /seller/orders/{order_id}` | List/view orders for seller's inventory. |
+| Inventory seller | `GET /seller/orders/recent` | Return the five latest orders for the overview. |
+| Inventory seller | `GET /seller/order-customers` | List customers with orders, grouped by saved customer or login account with status counts/latest order ID. |
+| Inventory seller | `GET /seller/order-customers/{customer_type}/{customer_id}/orders?status={confirmed\|delivered\|cancelled}&page=N` | View one customer's history newest first. Confirmed orders are unpaged; delivered/cancelled return at most five per page. |
 | Inventory seller | `POST /seller/orders/{order_id}/deliver` | Mark a confirmed order delivered. |
+| Inventory seller | `PATCH /seller/orders/{order_id}/items/{product_id}/price` | Change a line-item unit price on an order; recalculates its displayed subtotal and total without changing inventory stock/catalog price. |
 | Inventory seller | `POST /seller/customers/{customer_id}/orders` | Create an inventory order for a customer-directory record; stock is deducted and rejected items are reported. |
 | Inventory seller | `POST /seller/customers` | Create a customer in the seller's inventory; returns 201. |
 | Inventory seller | `GET /seller/customers` | List own customer records, sorted by name then ID. |
@@ -166,8 +173,9 @@ Use `Authorization: Bearer <access_token>` on protected requests. Tokens contain
 4. Partial item removal restores the actual removed stock. Removing every item changes status to cancelled; removed item rows are deleted.
 5. Full cancellation restores stock once and retains remaining item rows as history. Repeat cancellation returns 409.
 6. Delivery changes confirmed to delivered without deducting stock again. Repeat delivery returns 409.
-7. Customer order operations check the order's customer ID. Seller order operations check the seller's inventory. A different customer/seller must not gain access.
-8. Write contexts use `BEGIN IMMEDIATE`, and confirmation uses a conditional stock update to avoid accepting quantities beyond available stock. This implementation is SQLite-specific; concurrency under load has not been validated by the current suite.
+7. Seller line-item repricing is scoped to an order owned by the seller's inventory. Repricing does not change inventory catalog prices or stock.
+8. Customer order operations check the order's customer ID. Seller order operations check the seller's inventory. A different customer/seller must not gain access.
+9. Write contexts use `BEGIN IMMEDIATE`, and confirmation uses a conditional stock update to avoid accepting quantities beyond available stock. This implementation is SQLite-specific; concurrency under load has not been validated by the current suite.
 
 ## Verified tests and limitations
 
@@ -175,7 +183,7 @@ Reviewed test command: `.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovi
 
 Result on 2026-10-08 after the migration fix: **31 passed, 1 warning**. The warning is a Starlette deprecation warning about TestClient's use of `httpx`. Four tests exercise actual migrations; API fixtures still create their schema with `create_all`.
 
-The recorded 2026-10-08 suite covered invalid/missing order tokens, customer order isolation, cancellation stock restoration, public inventory browsing, wrong-password rejection, adding/removing quantities, seller registration/login, seller order isolation, seller delivery permissions/status/stock, inventory mutation permissions, shared product name preservation, seller customer create/list/view/update, and offline customer order behaviors. Frontend lint/build passed on 2026-10-24; the backend suite was not run for the frontend change.
+The recorded 2026-10-08 suite covered invalid/missing order tokens, customer order isolation, cancellation stock restoration, public inventory browsing, wrong-password rejection, adding/removing quantities, seller registration/login, seller order isolation, seller delivery permissions/status/stock, inventory mutation permissions, shared product name preservation, seller customer create/list/view/update, and offline customer order behaviors. On 2026-10-28, frontend lint/build and backend Python syntax checks passed for customer order browsing, inventory filters, and repricing. Backend pytest and API smoke checks were not run for that change.
 
 The current run succeeded in the sandbox using an explicit workspace temporary directory and disabling the pytest cache. The previous review encountered temporary-directory permissions; this run did not require escalation.
 
@@ -185,12 +193,12 @@ The previous test configuration mismatch is resolved: `tests/conftest.py` now se
 
 These are observations and recommendations, not already approved feature requirements:
 
-1. Improve order summaries so the frontend can display customer names and amounts without fetching every order detail separately; add directory-customer order history when that workflow is defined.
-2. Define delivery details and whether balances/credit/payment tracking are needed before adding those workflows.
-3. Add regression coverage for the new `/seller/me` profile endpoint and CORS configuration, plus continue testing customer-to-order behavior as it evolves.
+1. Add regression coverage for `/seller/me`, CORS, customer-grouped histories/pagination, and confirmed-order repricing.
+2. Order recency currently uses descending integer order IDs because the schema has no timestamps. Add timestamps if calendar dates or exact creation times are needed.
+3. Define delivery details and whether balances/credit/payment tracking are needed before adding those workflows.
 4. Add a reproducible backend dependency manifest. Verify the actual database's revision/schema before applying migrations. The baseline creates tables for an empty database; adopting a pre-existing schema requires checking that it matches before stamping the baseline. SQLite batch migrations require a live connection; generating the full upgrade with `--sql` is not implemented.
 5. Define money units and currency. The frontend currently labels values as integer `units` because the backend has not defined currency/scale.
-6. Consider timestamps, customer search/pagination, customer referential integrity, and role/staff access as product needs become clear.
+6. Consider customer search, broader pagination, referential integrity, and role/staff access as product needs become clear.
 
 Other absent capabilities include structured delivery addresses, invoices, payment processing, returns, reports, pagination/search, delivery scheduling, and staff roles. Customer records already have a free-text address field. Do not assume all absent capabilities are required just because they are listed here.
 

@@ -437,6 +437,26 @@ class orders:
         return changed
 
 
+    def update_item_price(self, prd_id, unit_price):
+        if unit_price < 0:
+            raise ValueError("Unit price cannot be negative")
+        if self.order_id is None:
+            raise ValueError("Order does not exist")
+
+        with get_db_write() as db:
+            order = db.get(OrderRow, self.order_id)
+            if order is None:
+                raise ValueError("Order does not exist")
+
+            item = db.get(OrderItemRow, (self.order_id, prd_id))
+            if item is None:
+                raise LookupError("Product is not in this order")
+
+            item.unit_price = unit_price
+
+        return True
+
+
     def view_order(self):
         if self.order_id is None:
             return None

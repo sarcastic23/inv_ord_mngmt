@@ -60,6 +60,33 @@ class OrderResponse(BaseModel):
     items: list[OrderItemResponse]
     total: int
 
+
+class OrderItemPriceUpdate(BaseModel):
+    unit_price: int = Field(ge=0)
+
+
+class CustomerOrderGroupResponse(BaseModel):
+    customer_type: Literal["directory", "account"]
+    customer_id: int
+    customer_name: str
+    phone: str | None = None
+    address: str | None = None
+    total_orders: int
+    confirmed_orders: int
+    delivered_orders: int
+    cancelled_orders: int
+    latest_order_id: int
+
+
+class CustomerOrderHistoryResponse(BaseModel):
+    customer: CustomerOrderGroupResponse
+    status: Literal["confirmed", "delivered", "cancelled"]
+    page: int
+    page_size: int
+    total: int
+    page_count: int
+    orders: list[OrderResponse]
+
 class RejectedOrderItem(BaseModel):
     product_id: str
     qty: int
