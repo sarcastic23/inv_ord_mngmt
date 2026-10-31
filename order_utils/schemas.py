@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
+from datetime import datetime
+from decimal import Decimal
 
 
 class ProductCreate(BaseModel):
@@ -17,6 +19,14 @@ class ProductResponse(BaseModel):
 class InventoryProductInput(BaseModel):
     id: str = Field(min_length=1)
     name: str = Field(min_length=1)
+    stock: int = Field(ge=0)
+    unit_price: int = Field(ge=0)
+
+
+class InventoryProductUpdate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=200)
     stock: int = Field(ge=0)
     unit_price: int = Field(ge=0)
 
@@ -65,6 +75,46 @@ class OrderItemPriceUpdate(BaseModel):
     unit_price: int = Field(ge=0)
 
 
+class BulkOrderDeliveryRequest(BaseModel):
+    order_ids: list[int] = Field(min_length=1)
+    vat_rate_bps: Literal[0, 1300] = 0
+    payment_terms: Literal["due_on_receipt", "credit"] = "credit"
+
+
+class BulkOrderDeliveryResponse(BaseModel):
+    order_ids: list[int]
+    status: Literal["delivered"]
+    invoice_id: int
+    invoice_number: str
+
+
+class InvoiceResponse(BaseModel):
+    id: int
+    invoice_number: str
+    customer_name: str
+    customer_phone: str | None
+    customer_address: str | None
+    seller_name: str
+    payment_terms: Literal["due_on_receipt", "credit"]
+    issued_at: str
+    is_vat_invoice: bool
+    vat_rate_bps: int
+    subtotal: int
+    vat_total: Decimal
+    total: Decimal
+    amount_paid: Decimal
+    balance: Decimal
+    payment_status: Literal["unpaid", "partially_paid", "paid"]
+    items: list[dict]
+
+
+class PaymentCreate(BaseModel):
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    paid_at: datetime | None = None
+    method: str | None = Field(default=None, max_length=50)
+    reference: str | None = Field(default=None, max_length=100)
+
+
 class CustomerOrderGroupResponse(BaseModel):
     customer_type: Literal["directory", "account"]
     customer_id: int
@@ -107,6 +157,8 @@ class OrderItemRejectResponse(BaseModel):
 class OrderDeliveryResponse(BaseModel):
     order_id: int
     status: Literal["delivered"]
+    invoice_id: int
+    invoice_number: str
 
 
 

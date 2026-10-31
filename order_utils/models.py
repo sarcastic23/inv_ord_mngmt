@@ -1,4 +1,6 @@
-from sqlalchemy import CheckConstraint, ForeignKey
+from decimal import Decimal
+
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -33,6 +35,7 @@ class InventoryProductRow(Base):
         primary_key=True
     )
 
+    name_override: Mapped[str | None]
     stock: Mapped[int]
     unit_price: Mapped[int]
 
@@ -62,6 +65,7 @@ class OrderRow(Base):
     )
 
     status: Mapped[str] = mapped_column(default="confirmed")
+    invoice_id: Mapped[int | None] = mapped_column(ForeignKey("invoices.id"), index=True)
 
     __table_args__ = (
         CheckConstraint(
@@ -134,5 +138,47 @@ class CustomerRow(Base):
     name: Mapped[str]
     phone: Mapped[str | None]
     address: Mapped[str | None]
+
+
+class InvoiceRow(Base):
+    __tablename__ = "invoices"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_number: Mapped[str] = mapped_column(unique=True)
+    inventory_id: Mapped[int] = mapped_column(ForeignKey("inventories.id"), index=True)
+    customer_name: Mapped[str]
+    customer_phone: Mapped[str | None]
+    customer_address: Mapped[str | None]
+    seller_name: Mapped[str]
+    payment_terms: Mapped[str] = mapped_column(default="credit")
+    is_vat_invoice: Mapped[bool] = mapped_column(default=False)
+    vat_rate_bps: Mapped[int] = mapped_column(default=0)
+    subtotal: Mapped[int]
+    vat_total: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    total: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    issued_at: Mapped[str]
+
+
+class InvoiceItemRow(Base):
+    __tablename__ = "invoice_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[str]
+    product_name: Mapped[str]
+    quantity: Mapped[int]
+    unit_price: Mapped[int]
+    subtotal: Mapped[int]
+    vat_rate_bps: Mapped[int]
+    vat_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    total: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+
+
+class PaymentRow(Base):
+    __tablename__ = "payments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    paid_at: Mapped[str]
+    method: Mapped[str | None]
+    reference: Mapped[str | None]
 
 

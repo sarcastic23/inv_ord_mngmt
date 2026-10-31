@@ -1,9 +1,9 @@
 from fastapi import APIRouter,Depends,HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from order_utils.models import ProductRow
-from order_utils.storage import get_db_dependency
-from order_utils.schemas import InventoryProductInput
+from order_utils.models import ProductRow, InventoryProductRow
+from order_utils.storage import get_db_dependency, get_db_write
+from order_utils.schemas import InventoryProductInput, InventoryProductUpdate
 from sqlalchemy.exc import IntegrityError
 from order_utils.Business import Inventory, Product
 from .auth import get_current_user
@@ -130,5 +130,34 @@ def set_inventory_products(
             status_code=409,
             detail="Update conflicts with database constraints"
         )
-
     return {"inventory_id": inventory_id, "processed": count}
+
+
+@router.patch("/inventories/{inventory_id}/products/{product_id}")
+def update_inventory_product(
+    inventory_id: int,
+    product_id: str,
+    data: InventoryProductUpdate,
+    seller_inventory_id: int = Depends(get_seller_inventory),
+):
+    if inventory_id != seller_inventory_id:
+        raise HTTPException(status_code=403, detail="Inventory belongs to another seller")
+
+    with get_db_write() as db:
+        row = db.get(InventoryProductRow, (inventory_id, product_id))
+        if row is None:
+            raise HTTPException(status_code=404, detail="Product not found in this inventory")
+        catalog_product = db.get(ProductRow, product_id)
+        if catalog_product is None:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        row.name_override = None if data.name == catalog_product.name else data.name
+        row.stock = data.stock
+        row.unit_price = data.unit_price
+        result = {
+            "id": product_id,
+            "name": row.name_override or catalog_product.name,
+            "stock": row.stock,
+            "unit_price": row.unit_price,
+        }
+    return result

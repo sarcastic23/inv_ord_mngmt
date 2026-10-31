@@ -1,4 +1,4 @@
-from sqlalchemy import select,update
+from sqlalchemy import select,update,func,and_
 from .storage import get_db,get_db_write
 from .models import (
     ProductRow,
@@ -76,7 +76,7 @@ class Inventory:
             statement = (
                 select(
                     ProductRow.id,
-                    ProductRow.name,
+                    func.coalesce(InventoryProductRow.name_override, ProductRow.name),
                     InventoryProductRow.stock,
                     InventoryProductRow.unit_price
                 )
@@ -87,7 +87,7 @@ class Inventory:
                 .where(
                     InventoryProductRow.inventory_id == self.inventory_id
                 )
-                .order_by(ProductRow.name)
+                .order_by(func.coalesce(InventoryProductRow.name_override, ProductRow.name))
             )
 
             return db.execute(statement).all()
@@ -138,7 +138,7 @@ class Inventory:
             statement = (
                 select(
                     ProductRow.id,
-                    ProductRow.name,
+                    func.coalesce(InventoryProductRow.name_override, ProductRow.name),
                     InventoryProductRow.stock,
                     InventoryProductRow.unit_price
                 )
@@ -470,7 +470,7 @@ class orders:
             items = db.execute(
                 select(
                     OrderItemRow.product_id,
-                    ProductRow.name,
+                    func.coalesce(InventoryProductRow.name_override, ProductRow.name),
                     OrderItemRow.quantity,
                     OrderItemRow.unit_price
                 )
@@ -478,8 +478,15 @@ class orders:
                     ProductRow,
                     ProductRow.id == OrderItemRow.product_id
                 )
+                .outerjoin(
+                    InventoryProductRow,
+                    and_(
+                        InventoryProductRow.inventory_id == order.inventory_id,
+                        InventoryProductRow.product_id == OrderItemRow.product_id,
+                    ),
+                )
                 .where(OrderItemRow.order_id == self.order_id)
-                .order_by(ProductRow.name)
+                .order_by(func.coalesce(InventoryProductRow.name_override, ProductRow.name))
             ).all()
 
             return {

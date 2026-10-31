@@ -1,6 +1,6 @@
 # Project context for any AI assistant
 
-Last reviewed: 2026-10-28. This is a snapshot of the actual workspace, including uncommitted changes. Update it after meaningful changes; inspect current source before making edits.
+Last reviewed: 2026-10-31. This is a snapshot of the actual workspace, including uncommitted changes. Update it after meaningful changes; inspect current source before making edits.
 
 ## Keeping this file with the project
 
@@ -25,6 +25,11 @@ Reusable prompt after feature work:
 
 | Date | Change | Verification |
 | --- | --- | --- |
+| 2026-10-31 | Fixed the stale backend process that caused inventory PATCH 405 and Analysis 404 responses by restarting Uvicorn with reload enabled. Added a top-five customer trend chart to Overview and Analysis, using weekly running sales totals; customer lines enter/leave the chart as rankings change. | Backend `py_compile` and live OpenAPI route checks passed; frontend `npm run lint` and `npm run build` passed. Signed-in save and analysis data flows were not run. |
+| 2026-10-31 | Added inventory row Edit actions for product name, stock, and price. Product names can be overridden per distributor inventory while shared catalog names remain unchanged; inventory/order/invoice/analysis views use the inventory display name. Migration `c82173b4f210` adds the nullable override and is applied to the configured database. | Backend `py_compile` and OpenAPI route check passed; frontend `npm run lint` and `npm run build` passed; configured database upgraded to `c82173b4f210`. Backend pytest and authenticated edit endpoint checks were not run. |
+| 2026-10-31 | Added a distributor Analysis section and `/seller/analysis` endpoint for invoiced product sales pace, current stock cover, customer purchase rankings, outstanding balances, and average settlement time. Analysis excludes profitability and uses invoices saved in the app. | Backend source compiled and OpenAPI included the endpoint; frontend `npm run lint` and `npm run build` passed. Backend pytest and authenticated analysis endpoint checks were not run. |
+| 2026-10-28 | Added persistent invoices on single or batch delivery, optional 13% VAT calculation with paisa precision, credit/due-on-receipt terms, payment records, printable invoice copies, and one Excel workbook export with three filterable sheets. Migrations `e2b71a31c046` and `f53d92b31a08` add the invoice/payment schema and decimal totals. | Backend source compiled; full migration chain passed on a temporary SQLite database and was applied to the configured database at `f53d92b31a08`; frontend `npm run lint` and `npm run build` passed. Backend pytest and authenticated endpoint smoke checks were not run. |
+| 2026-10-28 | Added multi-order bill assembly for one customer: select confirmed orders, preview combined product/price lines, print the bill, and atomically deliver all selected orders together. | Frontend `npm run lint` and `npm run build` passed; backend files passed `py_compile` and FastAPI OpenAPI generation. Backend pytest and API smoke checks were not run. Bill previews are generated in the frontend and are not stored as separate records. |
 | 2026-10-28 | Added inventory filters for low/finished stock, customer-grouped order histories, newest-first order display, five-order pages for delivered/cancelled histories, unpaged confirmed orders, and per-order line-item repricing. | Frontend `npm run lint` and `npm run build` passed; backend files passed `py_compile` and FastAPI OpenAPI generation. Backend pytest and endpoint smoke checks were not run for this change. |
 | 2026-10-28 | Added a persistent light/dark theme toggle to the login and distributor workspace screens. Dark styles cover navigation, cards, forms, tables, alerts, and status labels. | `npm run lint` and `npm run build` passed. |
 | 2026-10-28 | Fixed async frontend forms resetting `event.currentTarget` after awaiting API calls; handlers now retain the form element. Applied to inventory, customer, and order forms. | `npm run lint` and `npm run build` passed. Read-only check confirmed the product from the reported inventory submission was already stored in `business.db`; the error was raised during UI reset after the successful API response. |
@@ -41,11 +46,11 @@ Help me continue from the current implementation. Explain changes clearly and di
 
 ## Where we are now
 
-The project contains a FastAPI backend and a separate Next.js distributor frontend in `frontend/`. The frontend has sign-in, overview, inventory, customer, and order screens. Inventory filters show all products, running-low stock (1-9 units), or finished stock (0 units). Orders are grouped by saved distributor customers or login accounts; confirmed histories are unpaged, while delivered and cancelled histories use five-order pages, all newest first by descending order ID. Sellers can change an item's price on a specific order without changing the inventory catalog price.
+The project contains a FastAPI backend and a separate Next.js distributor frontend in `frontend/`. The frontend has sign-in, overview, inventory, customer, order, invoice, and analysis screens. Overview and Analysis include a weekly running-sales chart for customers in the top five at each point; customer lines join or leave as their rankings change. Inventory filters show all products, running-low stock (1-9 units), or finished stock (0 units); each inventory row can be edited for name, stock, and price. Inventory-specific names do not change the shared product catalog name. Orders are grouped by saved distributor customers or login accounts; confirmed histories are unpaged, while delivered and cancelled histories use five-order pages, all newest first by descending order ID. Sellers can select multiple confirmed orders for the same customer, preview a combined bill, optionally calculate 13% VAT, choose payment terms, save a numbered invoice, and deliver them atomically. Single-order delivery also saves a standard invoice. Invoice line items preserve product names, quantities, prices, and tax values at issue time. Sellers can record partial/full payments, view balances, print invoice copies, and export an Excel workbook with Invoices, Invoice Items, and Payments sheets. The Analysis screen summarizes sales pace and customer buying/payment patterns from saved invoices; profitability is not included. Sellers can change an item's price on a specific order without changing the inventory catalog price.
 
 We are at the first distributor customer-management stage: sellers can create, list, view, and update customer records belonging to their inventory. Records include a required name and optional phone/address; customers do not need login accounts for these records. Inventory product updates are restricted to the inventory's seller.
 
-The directory-to-order workflow is implemented: models and migration `46577a49b999` add nullable `directory_customer_id` referencing `customers`, make `customer_id` nullable, and require exactly one customer identity. Sellers can create an order for a customer directory record using `POST /seller/customers/{customer_id}/orders`, then list/view and deliver it. Customer-facing routes still use the authenticated user's ID as `customer_id`. Customer order history for directory customers, customer deletion, balances, and payments are not implemented. Migration verification used temporary databases and does not establish the current revision of the real business database.
+The directory-to-order workflow is implemented: models and migration `46577a49b999` add nullable `directory_customer_id` referencing `customers`, make `customer_id` nullable, and require exactly one customer identity. Sellers can create an order for a customer directory record using `POST /seller/customers/{customer_id}/orders`, then list/view and deliver it. Customer-facing routes still use the authenticated user's ID as `customer_id`. Customer order history for directory customers and customer deletion are not implemented. The configured database is at `f53d92b31a08` after applying the invoice and paisa-precision migrations.
 
 The seller delivery endpoint and its permission/stock test are present. Customers cannot mark orders delivered. The existing test suite passes, but its coverage does not establish that every business rule or security boundary is complete.
 
@@ -80,10 +85,10 @@ Do not include the real `.env`, credentials, tokens, or customer/database conten
 | --- | --- |
 | `main.py` | Builds the app, configures CORS from `FRONTEND_ORIGINS` (defaults to `http://localhost:3000`), and includes public products, protected products, orders, auth, and seller routers. |
 | `routes/auth.py` | Customer/user registration, login, and `get_current_user` bearer-token validation. |
-| `routes/products.py` | Public inventory browsing, authenticated shared catalog reads, seller-owned inventory product upserts. |
+| `routes/products.py` | Public inventory browsing, authenticated shared catalog reads, seller-owned inventory product upserts and inventory-specific product edits. |
 | `routes/orders.py` | Customer-owned order creation, listing, details, item additions/removals, cancellation. |
-| `routes/seller.py` | Seller registration/login/profile (`GET /seller/me`), inventory membership checks, customer-grouped order summaries/history pages/recent orders, seller order viewing/delivery/repricing, inventory-scoped customer CRUD, and offline customer order creation. |
-| `frontend/` | Next.js 16 distributor app: login, dashboard, inventory stock filters/updates, customer directory, grouped order histories, pagination, order delivery/repricing. Setup notes are in `frontend/README.md`. |
+| `routes/seller.py` | Seller registration/login/profile (`GET /seller/me`), inventory membership checks, customer-grouped order summaries/history pages/recent orders, individual/batch delivery and repricing, invoice/payment/export routes, invoiced-sales analysis, inventory-scoped customer CRUD, and offline customer order creation. |
+| `frontend/` | Next.js 16 distributor app: login, dashboard, inventory stock filters/updates, customer directory, grouped order histories, pagination, order delivery/repricing, invoice/payment screens, Analysis reports, bill printing, and workbook export. Setup notes are in `frontend/README.md`. |
 | `order_utils/Business.py` | `Product`, `Inventory`, and lowercase `orders` business class; stock/order transactions and order line repricing. Routes alias `orders` as `BusinessOrder`. |
 | `order_utils/models.py` | SQLAlchemy tables and constraints; import-time table creation has been removed. |
 | `migrations/env.py` | Uses the application engine and metadata; SQLite migration transactions, temporary foreign-key enforcement changes, and integrity checks. |
@@ -107,14 +112,15 @@ Do not include the real `.env`, credentials, tokens, or customer/database conten
 
 - `products`: shared catalog, string `id`, `name`.
 - `inventories`: integer `id`, `name`.
-- `inventory_products`: composite key `(inventory_id, product_id)`, integer `stock` and `unit_price`, both nonnegative.
+- `inventory_products`: composite key `(inventory_id, product_id)`, integer `stock` and `unit_price`, both nonnegative, and nullable `name_override` for a distributor-specific display name.
 - `users`: integer `id`, unique `username`, `password_hash`. There is no explicit role column.
 - `inventory_sellers`: inventory primary key and unique `user_id`, both foreign keys. Currently this permits one seller per inventory and one inventory per seller; it is not a multi-staff permission model.
 - `customers`: integer `id`, indexed inventory foreign key, required `name`, nullable `phone` and `address`. These are inventory-owned contact records, separate from login users; distributor orders reference them through `directory_customer_id`.
-- `orders`: integer `id`, nullable `customer_id` (login user ID, no users foreign key), nullable indexed `directory_customer_id` (customers foreign key), inventory foreign key, and status restricted to `confirmed`, `cancelled`, or `delivered`. A check requires exactly one of the two customer IDs to be set.
+- `orders`: integer `id`, nullable `customer_id` (login user ID, no users foreign key), nullable indexed `directory_customer_id` (customers foreign key), inventory foreign key, nullable `invoice_id`, and status restricted to `confirmed`, `cancelled`, or `delivered`. A check requires exactly one of the two customer IDs to be set.
 - `order_items`: composite key `(order_id, product_id)`, positive integer `quantity`, nonnegative integer `unit_price`; order and product foreign keys.
+- `invoices`: numbered issue-time snapshots of seller/customer, payment terms, VAT choice/rate, subtotal, VAT, total, and timestamp. `invoice_items` preserve product/price/quantity/tax snapshots. `payments` records one or more dated amounts, methods, and references per invoice.
 
-Prices and totals are integers. Currency and whether those integers represent major or minor monetary units have not been defined. Product identity/name is global; stock and current price belong to an inventory. Inventory upserts create missing catalog products but preserve the name of an existing product, even when a different name is submitted. Order items store their own unit price. Adding quantity to an existing item keeps its stored price.
+Catalog prices, order line prices, and subtotals are whole integer NPR rupees. Invoice VAT, invoice totals, and payment amounts use two decimal places for paisa. Product identity/name is global; stock and current price belong to an inventory. Inventory upserts create missing catalog products but preserve the name of an existing product, even when a different name is submitted. Order items store their own unit price. Adding quantity to an existing item keeps its stored price.
 
 ## Current HTTP API
 
@@ -137,7 +143,12 @@ Prices and totals are integers. Currency and whether those integers represent ma
 | Inventory seller | `GET /seller/orders/recent` | Return the five latest orders for the overview. |
 | Inventory seller | `GET /seller/order-customers` | List customers with orders, grouped by saved customer or login account with status counts/latest order ID. |
 | Inventory seller | `GET /seller/order-customers/{customer_type}/{customer_id}/orders?status={confirmed\|delivered\|cancelled}&page=N` | View one customer's history newest first. Confirmed orders are unpaged; delivered/cancelled return at most five per page. |
-| Inventory seller | `POST /seller/orders/{order_id}/deliver` | Mark a confirmed order delivered. |
+| Inventory seller | `POST /seller/orders/{order_id}/deliver` | Save a standard invoice and mark one confirmed order delivered atomically. |
+| Inventory seller | `POST /seller/orders/deliver-batch` | Atomically create an invoice and deliver multiple confirmed orders for the same customer; accepts VAT rate basis points and payment terms; rejects mixed customers, other inventories, duplicates, or non-confirmed orders. |
+| Inventory seller | `GET /seller/invoices` | List invoice snapshots with payment totals, balances, and payment status. |
+| Inventory seller | `POST /seller/invoices/{invoice_id}/payments` | Add a partial/full payment with date and optional method/reference; rejects overpayments and cross-inventory invoice IDs. |
+| Inventory seller | `GET /seller/invoices/export` | Download one `.xlsx` workbook with invoice, item, and payment sheets. |
+| Inventory seller | `GET /seller/analysis?days={30\|90}` | Summarize invoiced product sales pace/stock cover and customer purchase, balance, trend, and settled-invoice payment-time metrics. Does not calculate profitability. |
 | Inventory seller | `PATCH /seller/orders/{order_id}/items/{product_id}/price` | Change a line-item unit price on an order; recalculates its displayed subtotal and total without changing inventory stock/catalog price. |
 | Inventory seller | `POST /seller/customers/{customer_id}/orders` | Create an inventory order for a customer-directory record; stock is deducted and rejected items are reported. |
 | Inventory seller | `POST /seller/customers` | Create a customer in the seller's inventory; returns 201. |
@@ -172,10 +183,11 @@ Use `Authorization: Bearer <access_token>` on protected requests. Tokens contain
 3. Adding items deducts more stock and merges quantities for an existing order product. Only confirmed orders are open for modification.
 4. Partial item removal restores the actual removed stock. Removing every item changes status to cancelled; removed item rows are deleted.
 5. Full cancellation restores stock once and retains remaining item rows as history. Repeat cancellation returns 409.
-6. Delivery changes confirmed to delivered without deducting stock again. Repeat delivery returns 409.
+6. Delivery changes confirmed to delivered without deducting stock again and saves a standard invoice. Batch delivery saves one invoice for the selected same-customer orders. Repeat delivery returns 409.
 7. Seller line-item repricing is scoped to an order owned by the seller's inventory. Repricing does not change inventory catalog prices or stock.
 8. Customer order operations check the order's customer ID. Seller order operations check the seller's inventory. A different customer/seller must not gain access.
-9. Write contexts use `BEGIN IMMEDIATE`, and confirmation uses a conditional stock update to avoid accepting quantities beyond available stock. This implementation is SQLite-specific; concurrency under load has not been validated by the current suite.
+9. Delivery and invoice creation happen in the same database transaction; each delivered order is linked to one invoice. Invoice snapshots are not retroactively changed by later product/customer edits.
+10. Write contexts use `BEGIN IMMEDIATE`, and confirmation uses a conditional stock update to avoid accepting quantities beyond available stock. This implementation is SQLite-specific; concurrency under load has not been validated by the current suite.
 
 ## Verified tests and limitations
 
@@ -193,14 +205,15 @@ The previous test configuration mismatch is resolved: `tests/conftest.py` now se
 
 These are observations and recommendations, not already approved feature requirements:
 
-1. Add regression coverage for `/seller/me`, CORS, customer-grouped histories/pagination, and confirmed-order repricing.
-2. Order recency currently uses descending integer order IDs because the schema has no timestamps. Add timestamps if calendar dates or exact creation times are needed.
-3. Define delivery details and whether balances/credit/payment tracking are needed before adding those workflows.
+1. Add regression coverage for `/seller/me`, CORS, customer-grouped histories/pagination, order repricing, atomic batch delivery, invoice/payment security, and the Analysis endpoint.
+2. Order recency still uses descending integer IDs because orders have no timestamps. Analysis dates come from invoices; delivered orders from before invoice tracking are excluded.
+3. Add a stock receiving/cost history before implementing product profitability. Current inventory records only on-hand quantity and current sale price.
 4. Add a reproducible backend dependency manifest. Verify the actual database's revision/schema before applying migrations. The baseline creates tables for an empty database; adopting a pre-existing schema requires checking that it matches before stamping the baseline. SQLite batch migrations require a live connection; generating the full upgrade with `--sql` is not implemented.
-5. Define money units and currency. The frontend currently labels values as integer `units` because the backend has not defined currency/scale.
+5. Catalog and order values are treated as whole NPR rupees based on the Nepal deployment; the database does not store a configurable currency or smaller-unit product price.
 6. Consider customer search, broader pagination, referential integrity, and role/staff access as product needs become clear.
+7. VAT calculation uses a manually selected 13% rate on all lines, with line tax rounded to two decimal places. Seller VAT/PAN configuration, item-specific exemptions/rates, statutory invoice details, due dates, and approved e-invoice integration remain unconfigured; the UI warns users to verify eligibility and item tax treatment. Do not treat the generated VAT bills as confirmed legal compliance until reviewed against current IRD requirements.
 
-Other absent capabilities include structured delivery addresses, invoices, payment processing, returns, reports, pagination/search, delivery scheduling, and staff roles. Customer records already have a free-text address field. Do not assume all absent capabilities are required just because they are listed here.
+Other absent capabilities include structured delivery addresses, payment gateway processing, returns, historical order import, broader pagination/search, delivery scheduling, and staff roles. Customer records already have a free-text address field. Do not assume all absent capabilities are required just because they are listed here.
 
 ## Working-state notes for the next AI
 
